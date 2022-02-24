@@ -16,7 +16,7 @@ Please ensure that the following pre-requisites are met before executing the ans
 7. Login into OpenShift cluster using 'oc login' from the ansible-controller.
 8. Install the kubernetes core collection for Ansible by running 'ansible-galaxy collection install kubernetes.core'.
 
-Notes:
+**Notes**:
 1. The scripts are tested with Python 3.10.1 and Ansible 2.12.1 on MacOS.
 2. The scripts are work-in-progress and updated frequently.
 3. The script is meant for setup of sandbox environment only on IBM ROKS (OpenShift on IBM Cloud) and not for production.
@@ -35,7 +35,7 @@ ansible-playbook deploy-cp4wa.yml
 ```
 It would take about 2 hours for the installation to complete. Once the installation is completed, the URL to access the AIOps console and the 'admin' password to login are presented on the screen. Use them to access the console and checkout the features as described in [IBM CloudPak for Watson AIOps Knowledge Center](https://www.ibm.com/docs/en/cloud-paks/cloud-pak-watson-aiops/3.2.0). 
 
-Note: if the script throws errors, re-run the script.
+**Note**: if the script throws errors, re-run the script.
 
 ### 3. Uninstall Watson AIOps
 
@@ -47,4 +47,4 @@ Switch to 'uninstall-sh-scripts' and run the following:
 ./uninstall-cp4waiops.sh
 ```
 
-After the shell script is executed completely, CP4WAIOps is removed from the target OpenShift Cluster. You can remove the 'cp4waiops' namespace manually. If you want to install CP4WAIOps again, run the ansible scrip as mentioned in step 2. 
+After the shell script is executed completely, CP4WAIOps is removed from the target OpenShift Cluster. You can remove the 'cp4waiops' namespace manually. If you want to install CP4WAIOps again, run the ansible script as mentioned in step 2. 
