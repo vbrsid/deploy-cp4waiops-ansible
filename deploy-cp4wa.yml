@@ -1,0 +1,171 @@
+---
+- hosts: localhost
+  name: Deploy CP4WA on OpenShift
+  vars:
+    CP4WAIOPS_NAMESPACE: cp4waiops
+    ENTITLED_REGISTRY: cp.icr.io
+    ENTITLED_REGISTRY_USER: cp
+    ENTITLED_REGISTRY_PWD: put-your-entitlement-key-here
+
+  tasks:
+
+    - name: Create cp4wa namespace
+      kubernetes.core.k8s:
+        api_version: v1
+        name: "{{ CP4WAIOPS_NAMESPACE }}"
+        kind: namespace
+        state: present
+
+
+    - name: Create OperatorGroup
+      kubernetes.core.k8s:
+        src: files/create-operator-group.yml
+        namespace: "{{ CP4WAIOPS_NAMESPACE }}"
+        state: present
+
+
+    - name: Create pull secret
+      shell: |
+        oc create secret docker-registry 'ibm-entitlement-key' --docker-server={{ ENTITLED_REGISTRY }} --docker-username={{ ENTITLED_REGISTRY_USER }} --docker-password={{ ENTITLED_REGISTRY_PWD }} --namespace={{ CP4WAIOPS_NAMESPACE }}
+      ignore_errors: yes
+
+
+    - name: Create topology service account
+      kubernetes.core.k8s:
+        src: files/create-topology-service-account.yml
+        namespace: "{{ CP4WAIOPS_NAMESPACE }}"
+        state: present
+      ignore_errors: yes
+
+
+    - name: Create the catalog source
+      kubernetes.core.k8s:
+        src: files/create-catalog-source.yml
+        namespace: "{{ CP4WAIOPS_NAMESPACE }}"
+        state: present
+
+
+    - name: Install the AI Manager operator
+      kubernetes.core.k8s:
+        src: files/install-ai-manager-operator.yml
+        namespace: "{{ CP4WAIOPS_NAMESPACE }}"
+        state: present
+
+
+    - name: Wait for csv to be ready
+      shell: |
+        oc get csv -n {{ CP4WAIOPS_NAMESPACE }}|grep -v "Succeeded" | grep -c ""
+      register: csv_check_output
+      until: csv_check_output.stdout == "1"
+      retries: 500
+      delay: 20
+
+
+    - name: Install AI Manager
+      kubernetes.core.k8s:
+        src: files/install-ai-manager.yml
+        namespace: "{{ CP4WAIOPS_NAMESPACE }}"
+        state: present
+
+
+    - name: Wait for AIOpsAnalyticsOrchestrator instance to be ready
+      shell: |
+        oc get AIOpsAnalyticsOrchestrator -n {{ CP4WAIOPS_NAMESPACE }} | grep -c ""
+      register: aiops_analytics_orch
+      until: aiops_analytics_orch.stdout == "2"
+      retries: 500
+      delay: 10
+
+
+    - name: Patch aiops analytics orchestrator instance
+      shell: |
+        sleep 20
+        oc patch AIOpsAnalyticsOrchestrator/aiops -n {{ CP4WAIOPS_NAMESPACE }} -p '{"spec":{"pullSecrets":["ibm-aiops-pull-secret"]}}' --type=merge
+        # oc get pods -n {{ CP4WAIOPS_NAMESPACE }} | grep aiops-ir-analytics | cut -d " " -f1 | xargs kubectl delete po -n cp4waiops
+      ignore_errors: yes
+
+
+    - name: wait for AIOps pods to come up
+      shell: |
+        pods=$(oc get po -n {{ CP4WAIOPS_NAMESPACE }} | grep -c "")
+        echo $pods
+      register: pod_count
+      until: pod_count.stdout|int > 145
+      retries: 1000
+      delay: 20
+
+
+    - name: Get the name of AutomationUIConfig instance name
+      shell: |
+        oc get AutomationUIConfig -n {{ CP4WAIOPS_NAMESPACE }} --no-headers -o custom-columns=":metadata.name"
+      register: AUTO_UI_INSTANCE
+
+
+    - name: Get the storageclass used by IAF
+      shell: |
+        oc get AutomationUIConfig -n {{ CP4WAIOPS_NAMESPACE }} -o jsonpath='{ .items[*].spec.storage.class }'
+      register: IAF_STORAGE
+
+
+    - name: Delete the AutomationUIConfig instance
+      shell: |
+        oc delete -n {{ CP4WAIOPS_NAMESPACE }} AutomationUIConfig {{ AUTO_UI_INSTANCE.stdout }}
+
+
+    - name: Create a new AutomationUIConfig instance 
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: core.automation.ibm.com/v1beta1
+          kind: AutomationUIConfig
+          metadata:
+            name: "{{ AUTO_UI_INSTANCE.stdout }}"
+            namespace: "{{ CP4WAIOPS_NAMESPACE }}"
+          spec:
+            description: AutomationUIConfig for cp4waiops
+            license:
+              accept: true
+            version: v1.0
+            storage:
+              class: "{{ IAF_STORAGE.stdout }}"
+            tls:
+              caSecret:
+                key: ca.crt
+                secretName: external-tls-secret
+              certificateSecret:
+                secretName: external-tls-secret
+
+
+    - name: Replace the existing secret with a secret that contains the AI Manager ingress certificate
+      shell: |
+        ingress_pod=$(oc get secrets -n openshift-ingress | grep tls | grep -v router-metrics-certs-default | awk '{print $1}')
+        oc get secret -n openshift-ingress -o jsonpath='{.data.tls\.crt}' ${ingress_pod} | base64 -d > cert.crt
+        oc get secret -n openshift-ingress -o jsonpath='{.data.tls\.key}' ${ingress_pod} | base64 -d > cert.key
+
+        oc get secret -n {{ CP4WAIOPS_NAMESPACE }} external-tls-secret -o yaml > external-tls-secret.yaml
+
+        oc delete secret -n {{ CP4WAIOPS_NAMESPACE }} external-tls-secret
+
+        oc create secret generic -n {{ CP4WAIOPS_NAMESPACE }} external-tls-secret --from-file=cert.crt=cert.crt --from-file=cert.key=cert.key
+        oc scale Deployment/ibm-nginx -n {{ CP4WAIOPS_NAMESPACE }} --replicas=0
+                              
+        sleep 10    
+        oc scale Deployment/ibm-nginx  -n {{ CP4WAIOPS_NAMESPACE }} --replicas=2
+
+    - name: Capture the cp4waiops console URL
+      shell: |
+        oc get route -n {{ CP4WAIOPS_NAMESPACE }} cpd -o jsonpath='{.spec.host}'
+      register: cp4waiops_url
+
+
+    - name: Capture the cp4waiops console admin password
+      shell: |
+        oc -n ibm-common-services get secret platform-auth-idp-credentials -o jsonpath='{.data.admin_password}' | base64 -d 
+      register: cp4waiops_pwd
+
+
+    - name: Print the cp4waiops console URL and admin password
+      debug:
+        msg:
+          - "URL      : https://{{ cp4waiops_url.stdout_lines[0] }}"
+          - "Password : {{ cp4waiops_pwd.stdout_lines[0] }}"
