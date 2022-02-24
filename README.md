@@ -36,3 +36,15 @@ ansible-playbook deploy-cp4wa.yml
 It would take about 2 hours for the installation to complete. Once the installation is completed, the URL to access the AIOps console and the 'admin' password to login are presented on the screen. Use them to access the console and checkout the features as described in [IBM CloudPak for Watson AIOps Knowledge Center](https://www.ibm.com/docs/en/cloud-paks/cloud-pak-watson-aiops/3.2.0). 
 
 Note: if the script throws errors, re-run the script.
+
+### 3. Uninstall Watson AIOps
+
+At this point in time, there is a good shell script provided by IBM for uninstalling the CloudPak for Watson AIOps. The shell script is available in this repository as well. 
+
+Switch to 'uninstall-sh-scripts' and run the following:
+
+```
+./uninstall-cp4waiops.sh
+```
+
+After the shell script is executed completely, CP4WAIOps is removed from the target OpenShift Cluster. You can remove the 'cp4waiops' namespace manually. If you want to install CP4WAIOps again, run the ansible scrip as mentioned in step 2. 
