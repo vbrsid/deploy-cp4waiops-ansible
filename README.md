@@ -24,11 +24,15 @@ Notes:
 
 ### 2. Run the scripts to deploy CP4WAIOps
 
-You can clone the repository on ansible-controller machine and run the following script to deploy CP4WAIOps. 
+You need to clone the repository on ansible-controller machine. 
+
+Open 'deploy-cp4wa.yml' file and enter the right value for the variable 'ENTITLED_REGISTRY_PWD' and save the file (replace the 'put-your-entitlement-key-here' string with your key). You can obtain this key from [MyIBM Container Software Library](https://myibm.ibm.com/products-services/containerlibrary).
+
+Run the following command to run the ansible script, which deploys CP4WAIOps. 
 
 ```
 ansible-playbook deploy-cp4wa.yml
 ```
 It would take about 2 hours for the installation to complete. Once the installation is completed, the URL to access the AIOps console and the 'admin' password to login are presented on the screen. Use them to access the console and checkout the features as described in [IBM CloudPak for Watson AIOps Knowledge Center](https://www.ibm.com/docs/en/cloud-paks/cloud-pak-watson-aiops/3.2.0). 
 
-Note: if the script throws errors
+Note: if the script throws errors, re-run the script.
